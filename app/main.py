@@ -12,25 +12,25 @@ if __name__ == "__main__":
 
     # 1. Start Timer
     logging.basicConfig(
-        level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
     os.system("cls")
     logging.info("NuEPOS - Rokers Product Updater v1.0 (SOH / SELL Only)\n\n")
 
     # 1. Load environment variables from .env file
-    logging.info(f"1/6: Setting up environment variables")
+    logging.info(f"1/9: Setting up environment variables")
     load_dotenv(override=True)
     logging.debug(f'EPOS connection:{os.environ["NRU-EPOSCONNECTION"]}')
     logging.debug(f'WEB connection:{os.environ["NRU-WEBCONNECTION"]}')
 
     # Update products on website
-    logging.info("3/6: Updating products on website")
+    logging.info("2/9: Updating products on website")
     products()
 
     # Delete environment variables
-    logging.info("5/6: Deleting environment variables")
+    logging.info("8/9: Deleting environment variables")
     del os.environ["NRU-EPOSCONNECTION"]
     del os.environ["NRU-WEBCONNECTION"]
 
     # Finished.
-    logging.info("6/6 Import complete in %.2f seconds." % (time.time() - start_time))
+    logging.info("9/9: Import complete in %.2f seconds." % (time.time() - start_time))

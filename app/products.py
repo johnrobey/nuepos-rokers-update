@@ -18,9 +18,9 @@ def products():
 
         # Retreive products
         epos_products = read_epos_products(eposCursor)
-        logging.info(f"Found {len(epos_products)} EPOS products")
+        logging.info(f"3/9: Found {len(epos_products)} EPOS products")
         web_products = read_web_products(webCursor)
-        logging.info(f"Found {len(web_products)} web products")
+        logging.info(f"4/9: Found {len(web_products)} web products")
 
         # Process web products
         process_web_products(
@@ -103,14 +103,13 @@ def process_web_products(webConnection, webCursor, epos_products, web_products):
                 if web_product["Sku"] == epos_product["sku"]:
                     found += 1
 
-                    if (web_product["Price"] != epos_product["ro_sell"]) or (
-                        web_product["StockQuantity"] != epos_product["soh"]
-                    ):
+                    if check_product_needs_update(web_product, epos_product):
                         updated += 1
-                        logging.debug(
-                            f'Product: {web_product["Name"]} ({web_product["Sku"]}) - WSell:{web_product["Price"]} / ESell:{epos_product["ro_sell"]} - WSOH:{web_product["StockQuantity"]} / ESOH{epos_product["soh"]}'
+                        web_product_id = web_product["Id"]
+
+                        update_web_product(
+                            webConnection, webCursor, epos_product, web_product_id
                         )
-                        update_web_product(webConnection, webCursor, epos_product)
 
                     break
 
@@ -124,13 +123,38 @@ def process_web_products(webConnection, webCursor, epos_products, web_products):
             create_web_product(webConnection, webCursor, epos_product)
             new_product_count += 1
 
-    logging.info(f"Found {found} web products")
-    logging.info(f"Updated {updated} web products")
+    logging.info(f"5/9: Updated {updated} web products")
+    logging.info(f"6/9: Deleted {deletecount} web products")
+    logging.info(f"7/9: New {new_product_count} web products")
 
     return
 
 
-def update_web_product(webConnection, webCursor, epos_product):
+def check_product_needs_update(web_product, epos_product):
+    # Run through value comparisons to check if a product needs to be updated
+    if web_product["Price"] != epos_product["ro_sell"]:
+        return True
+
+    if web_product["StockQuantity"] != epos_product["soh"]:
+        return True
+
+    if web_product["Brand"] == None and epos_product["brand"] != "Unbranded":
+        return True
+
+    if web_product["Brand"] != epos_product["brand"] and web_product["Brand"] != None:
+        logging.debug(
+            f'BRAND DIFFERENT: {web_product["Name"]} ({web_product["Sku"]}) - WBRAND: {web_product["Brand"]} - EPOSBRAND: {epos_product["brand"]}'
+        )
+        return True
+
+    return False
+
+
+def update_web_product(webConnection, webCursor, epos_product, web_product_id):
+    # Check brand before updating
+    # if epos_product["brand"] != "Unbranded" or epos_product["brand"] == None:
+    check_product_brand(webConnection, webCursor, epos_product, web_product_id)
+
     sku = epos_product["sku"]
     if epos_product["status"] == 1:
         deleted = 0
@@ -149,10 +173,6 @@ def update_web_product(webConnection, webCursor, epos_product):
         disableBuyButton = 1
         orderMaximumQuantity = 0
 
-    if epos_product["store"] == 1 and epos_product["collect"] == 0:
-        disableBuyButton = 1
-        orderMaximumQuantity = 0
-
     weight = epos_product["weight"]
     price = epos_product["ro_sell"]
     barcode = epos_product["barcode"]
@@ -164,6 +184,86 @@ def update_web_product(webConnection, webCursor, epos_product):
     webConnection.commit()
 
     return
+
+
+def check_product_brand(webConnection, webCursor, epos_product, product_id):
+    # Check brand exists
+    if epos_product["brand"] == None:
+        return
+
+    brand = read_brand_record(webConnection, webCursor, epos_product["brand"])
+    if brand:
+        # Brand exists
+        brand_id = brand.Id
+        # Check if product brand link record exists
+        if check_product_brand_link_record(
+            webConnection, webCursor, brand_id, product_id
+        ):
+            return
+        # Link record does not exist
+        create_product_brand_link_record(webConnection, webCursor, brand_id, product_id)
+    else:
+        # Brand does not exist
+        brand_id = create_new_brand(webConnection, webCursor, epos_product["brand"])
+        get_new_brand = read_brand_record(
+            webConnection, webCursor, epos_product["brand"]
+        )
+        if get_new_brand:
+            brand_id = get_new_brand.Id
+            create_product_brand_link_record(
+                webConnection, webCursor, brand_id, product_id
+            )
+
+    return
+
+
+def create_product_brand_link_record(webConnection, webCursor, brand_id, product_id):
+    sql = f"insert into Product_Manufacturer_Mapping (ProductId, ManufacturerId, IsFeaturedProduct, DisplayOrder) values ({product_id}, {brand_id}, 0, 1)"
+    webCursor.execute(sql)
+    webConnection.commit()
+    return
+
+
+def check_product_brand_link_record(webConnection, webCursor, brand_id, product_id):
+    sql = f"select top 1 * from Product_Manufacturer_Mapping where ProductId = {product_id}"
+    webCursor.execute(sql)
+    link_record = webCursor.fetchone()
+    if link_record:
+        # Record exists so check it has the correct brand
+        if link_record.ManufacturerId != brand_id:
+            update_product_brand_link_record(
+                webConnection, webCursor, brand_id, product_id
+            )
+        return True
+    return False
+
+
+def update_product_brand_link_record(webConnection, webCursor, brand_id, product_id):
+    sql = f"update Product_Manufacturer_Mapping set ManufacturerId = {brand_id} where ProductId = {product_id}"
+
+    logging.debug(f"UPDATE PRODUCT BRAND LINK SQL:{sql}")
+    webCursor.execute(sql)
+    webConnection.commit()
+    return
+
+
+def create_new_brand(webConnection, webCursor, brand_name):
+    print(f"Creating new brand: {brand_name}")
+    brand_name = brand_name.replace("'", "''")
+    sql = f"insert into Manufacturer (Name, ManufacturerTemplateId, PictureId, PageSize, AllowCustomersToSelectPageSize, PageSizeOptions, SubjectToAcl, LimitedToStores, Published, Deleted, DisplayOrder, CreatedOnUtc, UpdatedOnUtc, PriceRangeFiltering, PriceFrom, PriceTo, ManuallyPriceRange) values ('{brand_name}', 1, 0, 12, 1, '12, 24, 48', 0, 0, 1, 0, 0, getdate(), getdate(), 1, 0, 10000, 0)"
+    webCursor.execute(sql)
+    webConnection.commit()
+    return
+
+
+def read_brand_record(webConnection, webCursor, find_brand):
+    search_brand = find_brand.replace("'", "''")
+    sql = f"select top 1 * from Manufacturer where Name = '{search_brand}'"
+    webCursor.execute(sql)
+    brand = webCursor.fetchone()
+    if brand:
+        return brand
+    return False
 
 
 def delete_web_product(webConnection, webCursor, sku):
