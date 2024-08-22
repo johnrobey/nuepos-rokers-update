@@ -276,9 +276,12 @@ def delete_web_product(webConnection, webCursor, sku):
 
 def create_web_product(webConnection, webCursor, product):
 
-    if check_web_product_deleted(webCursor, product["sku"]):
-        logging.debug(f'Old product {product["sku"]} reinstated')
-        update_web_product(webConnection, webCursor, product)
+    web_product_id = check_web_product_deleted(webCursor, product["sku"])
+    if web_product_id != 0:
+        logging.debug(
+            f'Old product {product["sku"]} reinstated  - web product id {web_product_id}'
+        )
+        update_web_product(webConnection, webCursor, product, web_product_id)
         return
 
     # Insert new product record
@@ -286,8 +289,8 @@ def create_web_product(webConnection, webCursor, product):
     productName = productName.replace("'", "''")
     sku = product["sku"]
     soh = product["soh"]
-    sell = product["ro_sell"]  # TODO / 100
-    cost = product["cost"]  # TODO / 100
+    sell = product["ro_sell"]
+    cost = product["cost"]
     weight = product["weight"]
     barcode = product["barcode"]
     if product["tax_rate"] == 20:
@@ -307,10 +310,10 @@ def create_web_product(webConnection, webCursor, product):
 
 
 def check_web_product_deleted(webCursor, sku):
-    sql = f"select sku, name from Product where sku='{sku}'"
+    sql = f"select id, sku, name from Product where sku='{sku}'"
     webCursor.execute(sql)
     product = webCursor.fetchone()
     if product:
-        return True
+        return product.id
 
-    return False
+    return 0
