@@ -15,7 +15,7 @@ if __name__ == "__main__":
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
     os.system("cls")
-    logging.info("NuEPOS - Rokers Product Updater v1.0 (SOH / SELL Only)\n\n")
+    logging.info("NuEPOS - Rokers Product Updater v1.0\n\n")
 
     # 1. Load environment variables from .env file
     logging.info(f"1/9: Setting up environment variables")

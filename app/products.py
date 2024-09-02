@@ -61,7 +61,7 @@ def read_web_products(webCursor):
     web_products = []
 
     sql = f"""
-        select p.Id, cast(p.Sku as int) as Sku, m.Name as 'Brand', p.Name, p.Deleted, p.Price, p.ProductCost, p.StockQuantity, p.Gtin, p.Weight, p.Published, m.Id as 'BrandId'
+        select p.Id, cast(p.Sku as int) as Sku, m.Name as 'Brand', p.Name, p.Deleted, p.Price, p.ProductCost, p.StockQuantity, p.Gtin, p.Weight, p.Published, m.Id as 'BrandId', p.DisableBuyButton
         from Product p
         left join Product_Manufacturer_Mapping pmm on pmm.ProductId = p.Id
         left join Manufacturer m on m.Id = pmm.ManufacturerId
@@ -103,6 +103,9 @@ def process_web_products(webConnection, webCursor, epos_products, web_products):
                 if web_product["Sku"] == epos_product["sku"]:
                     found += 1
 
+                    # print("¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬")
+                    # pprint.pp(web_product)
+                    # print("¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬")
                     if check_product_needs_update(web_product, epos_product):
                         updated += 1
                         web_product_id = web_product["Id"]
@@ -147,6 +150,12 @@ def check_product_needs_update(web_product, epos_product):
         )
         return True
 
+    if web_product["DisableBuyButton"] == 0 and epos_product["collect"] == 0:
+        logging.debug(
+            f'STORE ONLY - WEB BUY ENABLED: {web_product["Name"]} ({web_product["Sku"]})'
+        )
+        return True
+
     return False
 
 
@@ -170,6 +179,10 @@ def update_web_product(webConnection, webCursor, epos_product, web_product_id):
         orderMaximumQuantity = 10000
     else:
         soh = 0
+        disableBuyButton = 1
+        orderMaximumQuantity = 0
+
+    if epos_product["collect"] == 0:
         disableBuyButton = 1
         orderMaximumQuantity = 0
 
